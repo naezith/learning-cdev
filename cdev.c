@@ -4,6 +4,7 @@
 #include <linux/kdev_t.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
+#include <linux/uaccess.h>
 
 #define BUFFER_SIZE 1024
 
