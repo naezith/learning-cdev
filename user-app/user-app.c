@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
             
-            printf("Successfully read %llu bytes from the character device:\n", strlen(read_buffer));
+            printf("Successfully read %zu bytes from the character device:\n", strlen(read_buffer));
             printf("%s\n", read_buffer);
             break;
         }
