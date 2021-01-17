@@ -14,34 +14,40 @@ enum e_actions { INVALID, READ, WRITE, IOCTL_READ, IOCTL_WRITE };
 #define BUFFER_SIZE 1024
 
 int main(int argc, char* argv[]) {
-    if(argc <= 1) {
-r_invalid_operation:
+    enum e_actions action = INVALID;
+
+    // Read the action from args
+    if(argc > 1) {
+        const char* arg_action = argv[1];
+        action = strcmp(arg_action, "write")         == 0 ? WRITE :
+                 strcmp(arg_action, "read")          == 0 ? READ : 
+                 strcmp(arg_action, "ioctl-write")   == 0 ? IOCTL_WRITE : 
+                 strcmp(arg_action, "ioctl-read")    == 0 ? IOCTL_READ : 
+                                                            INVALID;
+    }
+
+    // Check if empty or invalid
+    if(action == INVALID) {
         printf("Invalid operation, try one of: \"write\", \"read\", \"ioctl-write\", \"ioctl-read\".\n");
         goto r_error;
     }
 
-    const char* arg_action = argv[1];
-    enum e_actions action = strcmp(arg_action, "write")         == 0 ? WRITE :
-                            strcmp(arg_action, "read")          == 0 ? READ : 
-                            strcmp(arg_action, "ioctl-write")   == 0 ? IOCTL_WRITE : 
-                            strcmp(arg_action, "ioctl-read")    == 0 ? IOCTL_READ : 
-                                                                        INVALID;
+    // Write operations require one more arg
+    if(argc < 3) {
+        if(action == WRITE) {
+            printf("Add the text to write like \"write hello\"\n");
+            goto r_error;
+        }
+        else if(action == IOCTL_WRITE) {
+            printf("Add the number to ioctl-write like \"ioctl-write 1337\"\n");
+            goto r_error;
+        }
+    }
+    
+    // Read the data from args
     const char* action_data = argv[2];
 
-    if(action == INVALID) {
-        goto r_invalid_operation;
-    }
-
-    if(action == WRITE && action_data == NULL) {
-        printf("Add the text to write like \"write hello\"\n");
-        goto r_error;
-    }
-
-    if(action == IOCTL_WRITE && action_data == NULL) {
-        printf("Add the number to ioctl-write like \"ioctl-write 1337\"\n");
-        goto r_error;
-    }
-
+    // Open the device
     int fd = open("/dev/my_device", O_RDWR);
     if(fd < 0) {
         printf("Failed to open the device file\n");
