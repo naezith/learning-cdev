@@ -17,13 +17,16 @@
 // CDEV data
 static struct class* dev_class;
 static struct my_device_data {
+    char proc_buffer[BUFFER_SIZE];
 	char buffer[BUFFER_SIZE];
+    int proc_toggle;
 	size_t size;
     dev_t dev;
     int32_t ioctl_val;
     struct cdev cdev;
-} my_device = {"", 0, 0, 0};
+} my_device = {"A naive proc example\n", "", 1, 0, 0, 0};
 
+// cdev
 static int __init chr_driver_init(void);
 static void __exit chr_driver_exit(void);
 static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size, loff_t* offset);
@@ -39,6 +42,22 @@ static struct file_operations fops = {
     .open           = my_open,
     .release        = my_release,
     .unlocked_ioctl = my_ioctl
+};
+
+// proc data
+#define PROC_ENTRY_NAME "my_chr_proc"
+
+// proc
+static int my_open_proc(struct inode* inode, struct file* file);
+static int my_release_proc(struct inode* inode, struct file* file);
+static ssize_t my_read_proc(struct file* file, char __user* user_buffer, size_t size, loff_t* offset);
+static ssize_t my_write_proc(struct file* file, const char* user_buffer, size_t size, loff_t* offset);
+
+static struct proc_ops fops_proc = {
+    .proc_read           = my_read_proc,
+    .proc_write          = my_write_proc,
+    .proc_open           = my_open_proc,
+    .proc_release        = my_release_proc
 };
 
 static int __init chr_driver_init(void) {
@@ -66,12 +85,18 @@ static int __init chr_driver_init(void) {
     } 
 
     // Create device
-    if((device_create(dev_class, NULL, my_device.dev, NULL, "my_device")) == NULL) {
+    if(device_create(dev_class, NULL, my_device.dev, NULL, "my_device") == NULL) {
         printk(KERN_INFO"my_device: Failed to create the device\n");
         goto r_device;
     }
 
     printk(KERN_INFO"my_device: Device driver is inserted\n");
+
+    // Create proc entry
+    if(proc_create(PROC_ENTRY_NAME, 0666, NULL, &fops_proc) == NULL) {
+        printk(KERN_INFO"my_device: Failed to create the proc entry\n");
+        goto r_device;
+    }
 
     return 0;
 
@@ -89,6 +114,7 @@ static void __exit chr_driver_exit(void) {
     class_destroy(dev_class);
     cdev_del(&my_device.cdev);
     unregister_chrdev_region(my_device.dev, 1);
+    remove_proc_entry(PROC_ENTRY_NAME, NULL);
     printk(KERN_INFO"my_device: Device driver is removed\n");
 }
 
@@ -114,7 +140,7 @@ static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size,
         return 0;
     }
 
-    if(copy_to_user(user_buffer, my_data->buffer + *offset, size) != 0) {
+    if(copy_to_user(user_buffer, my_data->buffer, size) != 0) {
         printk(KERN_INFO"my_device: Failed to copy data to user\n");
         return -1;
     }
@@ -151,7 +177,7 @@ static long my_ioctl(struct file* file, unsigned int cmd, unsigned long arg) {
                 return -1;
             }
             
-            printk(KERN_INFO" WRITE ioctl_val = %d\n", my_data->ioctl_val);
+            printk(KERN_INFO"my_device: WRITE ioctl_val = %d\n", my_data->ioctl_val);
             break;
 
         case MY_RD_DATA:
@@ -160,11 +186,64 @@ static long my_ioctl(struct file* file, unsigned int cmd, unsigned long arg) {
                 return -1;
             }
             
-            printk(KERN_INFO" READ ioctl_val = %d\n", my_data->ioctl_val);
+            printk(KERN_INFO"my_device: READ ioctl_val = %d\n", my_data->ioctl_val);
             break;
     }
 
     return 0;
+}
+
+
+static int my_open_proc(struct inode* inode, struct file* file) {
+    printk(KERN_INFO"my_device: Opened proc fs\n");
+    return 0;
+}
+
+static int my_release_proc(struct inode* inode, struct file* file) {
+    printk(KERN_INFO"my_device: Closed proc fs\n");
+    return 0;
+}
+
+static ssize_t my_read_proc(struct file* file, char __user* user_buffer, size_t size, loff_t* offset) {
+    struct my_device_data* my_data = &my_device;
+
+    if(my_data->proc_toggle == 0) {
+        printk(KERN_INFO"my_device: Sending 0 after first one to stop the loop\n");
+        my_data->proc_toggle = 1;
+        return 0;
+    }
+    
+    my_data->proc_toggle = 0;
+    
+    if(size <= 0) {
+        printk(KERN_INFO"my_device: Read: Size is 0\n");
+        return 0;
+    }
+
+    if(copy_to_user(user_buffer, my_data->proc_buffer, BUFFER_SIZE) != 0) {
+        printk(KERN_INFO"my_device: Failed to copy data to user\n");
+        return -1;
+    }
+
+    printk(KERN_INFO"my_device: Data is read\n");
+    return BUFFER_SIZE;
+}
+
+static ssize_t my_write_proc(struct file* file, const char* user_buffer, size_t size, loff_t* offset) {
+    struct my_device_data* my_data = &my_device;
+
+    if(size <= 0) {
+        printk(KERN_INFO"my_device: Write: There is no data\n");
+        return 0;
+    }
+
+    if(copy_from_user(my_data->proc_buffer, user_buffer, size) != 0) {
+        printk(KERN_INFO"my_device: Failed to copy data from the user\n");
+        return -1;
+    }
+
+    printk(KERN_INFO"my_device: Data is written\n");
+    return size;
 }
 
 

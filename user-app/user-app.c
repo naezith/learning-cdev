@@ -33,8 +33,13 @@ int main(int argc, char* argv[]) {
     }
 
     // Read the data from args if it's given, though some operations must have it
+    int proc_arg_index = 2;
     char* action_data = NULL;
-    if(argc >= 3) action_data = argv[2];
+    if(argc >= 3) {
+        action_data = argv[2];
+        if(action == WRITE || action == IOCTL_WRITE) 
+            ++proc_arg_index;
+    }
     else {
         if(action == WRITE) {
             printf("Add the text to write like \"write hello\"\n");
@@ -46,8 +51,24 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    char dev_path[256];
+    char target_type[256];
+    if(argc > proc_arg_index && strcmp(argv[proc_arg_index], "proc") == 0) {
+        if(action == IOCTL_READ || action == IOCTL_WRITE) {
+            printf("Not possible to perform IOCTL on proc\n");
+            goto r_error;
+        }
+        
+        strcpy(dev_path, "/proc/my_chr_proc");
+        strcpy(target_type, "proc");
+    }
+    else {
+        strcpy(dev_path, "/dev/my_device");
+        strcpy(target_type, "character device");
+    }
+
     // Open the device
-    int fd = open("/dev/my_device", O_RDWR);
+    int fd = open(dev_path, O_RDWR);
     if(fd < 0) {
         printf("Failed to open the device file\n");
         goto r_error;
@@ -62,7 +83,7 @@ int main(int argc, char* argv[]) {
                 goto r_error_cleanup;
             }
             
-            printf("Successfully read %zu bytes from the character device:\n", strlen(read_buffer));
+            printf("Successfully read %zu bytes from the %s:\n", strlen(read_buffer), target_type);
             printf("%s\n", read_buffer);
             break;
         }
@@ -73,7 +94,7 @@ int main(int argc, char* argv[]) {
                 goto r_error_cleanup;
             }
 
-            printf("Successfully wrote to the character device\n");
+            printf("Successfully wrote to the %s\n", target_type);
             break;
 
         case IOCTL_WRITE:
@@ -84,7 +105,7 @@ int main(int argc, char* argv[]) {
                 goto r_error_cleanup;
             }
 
-            printf("Successfully IOCTL-wrote to the character device\n");
+            printf("Successfully IOCTL-wrote to the %s\n", target_type);
             break;
         }
 
@@ -96,7 +117,7 @@ int main(int argc, char* argv[]) {
                 goto r_error_cleanup;
             }
 
-            printf("Successfully IOCTL-read from the character device: %d\n", num);
+            printf("Successfully IOCTL-read from the %s: %d\n", target_type, num);
             break;
         }
     }
