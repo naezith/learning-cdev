@@ -32,8 +32,10 @@ int main(int argc, char* argv[]) {
         goto r_error;
     }
 
-    // Write operations require one more arg
-    if(argc < 3) {
+    // Read the data from args if it's given, though some operations must have it
+    char* action_data = NULL;
+    if(argc >= 3) action_data = argv[2];
+    else {
         if(action == WRITE) {
             printf("Add the text to write like \"write hello\"\n");
             goto r_error;
@@ -43,9 +45,6 @@ int main(int argc, char* argv[]) {
             goto r_error;
         }
     }
-    
-    // Read the data from args
-    const char* action_data = argv[2];
 
     // Open the device
     int fd = open("/dev/my_device", O_RDWR);
