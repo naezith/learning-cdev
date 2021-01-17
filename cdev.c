@@ -4,21 +4,21 @@
 #include <linux/kdev_t.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
-#include <linux/device.h>
-#include <linux/slab.h>
-#include <linux/uaccess.h>
 
-static const int mem_size = 1024;
+#define BUFFER_SIZE 1024
 
-static dev_t dev = 0;
 static struct class* dev_class;
-static struct cdev my_cdev;
-unsigned char* kernel_buffer;
+static struct my_device_data {
+    dev_t dev;
+    struct cdev cdev;
+	char buffer[BUFFER_SIZE];
+	size_t size;
+} my_device;
 
 static int __init chr_driver_init(void);
 static void __exit chr_driver_exit(void);
-static ssize_t my_read(struct file* file, char __user* buffer, size_t len, loff_t* off);
-static ssize_t my_write(struct file* file, const char* buffer, size_t len, loff_t* off);
+static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size, loff_t* offset);
+static ssize_t my_write(struct file* file, const char* user_buffer, size_t size, loff_t* offset);
 static int my_open(struct inode* inode, struct file* file);
 static int my_release(struct inode* inode, struct file* file);
 
@@ -31,81 +31,102 @@ static struct file_operations fops = {
 };
 
 static int __init chr_driver_init(void) {
-    // Allocate character device region 
-    if(alloc_chrdev_region(&dev, 0, 1, "my_dev") < 0) {
-        printk(KERN_INFO"Failed to allocate character device region");
+    // Get character device identification, major, minor
+    if(alloc_chrdev_region(&my_device.dev, 0, 1, "my_device_driver") != 0) {
+        printk(KERN_INFO"my_device: Failed to allocate character device region");
         return -1;
     }
 
-    printk(KERN_INFO"Major: %d, Minor: %d\n", MAJOR(dev), MINOR(dev));
+    printk(KERN_INFO"my_device: Major: %d, Minor: %d\n", MAJOR(my_device.dev), MINOR(my_device.dev));
     
     // Create character device structure
-    cdev_init(&my_cdev, &fops);
+    cdev_init(&my_device.cdev, &fops);
 
     // Add character device to the system
-    if(cdev_add(&my_cdev, dev, 1) < 0) {
-        printk(KERN_INFO"Failed to add the character device\n");
+    if(cdev_add(&my_device.cdev, my_device.dev, 1) < 0) {
+        printk(KERN_INFO"my_device: Failed to add the character device\n");
         goto r_class;
     }
 
     // Create struct class
     if((dev_class = class_create(THIS_MODULE, "my_class")) == NULL) {
-        printk(KERN_INFO"Failed to create the struct class\n");
+        printk(KERN_INFO"my_device: Failed to create the struct class\n");
         goto r_class;
     } 
 
     // Create device
-    if((device_create(dev_class, NULL,dev, NULL, "my_device")) == NULL) {
-        printk(KERN_INFO"Failed to create the device\n");
+    if((device_create(dev_class, NULL, my_device.dev, NULL, "my_device")) == NULL) {
+        printk(KERN_INFO"my_device: Failed to create the device\n");
         goto r_device;
     }
 
-    printk(KERN_INFO"Device driver is inserted\n");
+    printk(KERN_INFO"my_device: Device driver is inserted\n");
 
     return 0;
-    
-r_device:
+
+r_device: 
+    device_destroy(dev_class, my_device.dev);
+
+r_class: 
     class_destroy(dev_class);
 
-r_class:
-    unregister_chrdev_region(dev, 1);
     return -1;
 }
 
 static void __exit chr_driver_exit(void) {
-    device_destroy(dev_class, dev);
+    device_destroy(dev_class, my_device.dev);
     class_destroy(dev_class);
-    cdev_del(&my_cdev);
-    unregister_chrdev_region(dev, 1);
-    printk(KERN_INFO"Device driver is removed\n");
+    cdev_del(&my_device.cdev);
+    unregister_chrdev_region(my_device.dev, 1);
+    printk(KERN_INFO"my_device: Device driver is removed\n");
 }
 
 static int my_open(struct inode* inode, struct file* file) {
-    if((kernel_buffer = kmalloc(mem_size, GFP_KERNEL)) == 0) {
-        printk(KERN_INFO"Failed to allocate the memory\n");
-        return -1;
-    }
+    struct my_device_data* my_data = container_of(inode->i_cdev, struct my_device_data, cdev);
+
+    file->private_data = my_data;
  
-    printk(KERN_INFO"Device file opened\n");
+    printk(KERN_INFO"my_device: Device file opened\n");
     return 0;
 }
 
 static int my_release(struct inode* inode, struct file* file) {
-    kfree(kernel_buffer);
-    printk(KERN_INFO"Device file closed\n");
+    printk(KERN_INFO"my_device: Device file closed\n");
     return 0;
 }
 
-static ssize_t my_read(struct file* file, char __user* buffer, size_t len, loff_t* off) {
-    copy_to_user(buffer, kernel_buffer, mem_size);
-    printk(KERN_INFO"Data is read\n");
-    return mem_size;
+static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size, loff_t* offset) {
+    struct my_device_data *my_data = (struct my_device_data *) file->private_data;
+    
+    if(size <= 0) {
+        printk(KERN_INFO"my_device: Read: There is no data\n");
+        return 0;
+    }
+
+    if(copy_to_user(user_buffer, my_data->buffer + *offset, size) != 0) {
+        printk(KERN_INFO"my_device: Failed to copy data to user\n");
+        return -EFAULT;
+    }
+
+    printk(KERN_INFO"my_device: Data is read\n");
+    return size;
 }
 
-static ssize_t my_write(struct file* file, const char __user* buffer, size_t len, loff_t* off) {
-    copy_from_user(kernel_buffer, buffer, len);
-    printk(KERN_INFO"Data is written\n");
-    return len;
+static ssize_t my_write(struct file* file, const char __user* user_buffer, size_t size, loff_t* offset) {
+    struct my_device_data *my_data = (struct my_device_data *) file->private_data;
+
+    if(size <= 0) {
+        printk(KERN_INFO"my_device: Write: There is no data\n");
+        return 0;
+    }
+
+    if(copy_from_user(my_data->buffer, user_buffer, size)) {
+        printk(KERN_INFO"my_device: Failed to copy data from the user\n");
+        return -EFAULT;
+    }
+
+    printk(KERN_INFO"my_device: Data is written\n");
+    return size;
 }
 
 
@@ -113,4 +134,4 @@ module_init(chr_driver_init);
 module_exit(chr_driver_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("naezith");
-MODULE_DESCRIPTION("Character device driver");
+MODULE_DESCRIPTION("Character device driver test");

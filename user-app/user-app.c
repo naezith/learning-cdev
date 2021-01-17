@@ -24,16 +24,9 @@ int main(int argc, char* argv[]) {
         return -1;
     }
 
-    if(action == READ) {
-        printf("Will read from the device.\n");
-    }
-
-    if(action == WRITE) {
-        if(action_data == NULL) {
-            printf("Add the text to write like \"write hello\"\n");
-            return -1;
-        }
-        printf("Will write \"%s\" to the device.\n", action_data);
+    if(action == WRITE && action_data == NULL) {
+        printf("Add the text to write like \"write hello\"\n");
+        return -1;
     }
 
     int fd = open("/dev/my_device", O_RDWR);
@@ -46,11 +39,12 @@ int main(int argc, char* argv[]) {
         case READ:
         {
             char read_buffer[BUFFER_SIZE];
-            if(read(fd, read_buffer, BUFFER_SIZE) <= 0) {
-                printf("Failed to read from the device!");
+            if(read(fd, read_buffer, BUFFER_SIZE) < 0) {
+                printf("Failed to read from the device!\n");
                 return -1;
             }
-            printf("Successfully read data from the character device:\n");
+            
+            printf("Successfully read %d bytes from the character device:\n", strlen(read_buffer));
             printf("%s\n", read_buffer);
             break;
         }
@@ -59,10 +53,8 @@ int main(int argc, char* argv[]) {
                 printf("Failed to write to the device!");
                 return -1;
             }
-            printf("Successfully wrote the data to the character device\n");
-            break;
 
-        default: 
+            printf("Successfully wrote the data to the character device\n");
             break;
     }
 
