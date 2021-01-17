@@ -5,9 +5,17 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/ioctl.h>
 
 #define BUFFER_SIZE 1024
 
+// IOCTL codes: magic number, command number, data type
+#define MY_WR_DATA _IOW('a', 'a', int32_t*)
+#define MY_RD_DATA _IOR('a', 'b', int32_t*)
+
+int32_t ioctl_val = 0;
+
+// CDEV data
 static struct class* dev_class;
 static struct my_device_data {
     dev_t dev;
@@ -22,13 +30,15 @@ static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size,
 static ssize_t my_write(struct file* file, const char* user_buffer, size_t size, loff_t* offset);
 static int my_open(struct inode* inode, struct file* file);
 static int my_release(struct inode* inode, struct file* file);
+static long my_ioctl(struct file* file, unsigned int cmd, unsigned long arg);
 
 static struct file_operations fops = {
-    .owner      = THIS_MODULE,
-    .read       = my_read,
-    .write      = my_write,
-    .open       = my_open,
-    .release    = my_release
+    .owner          = THIS_MODULE,
+    .read           = my_read,
+    .write          = my_write,
+    .open           = my_open,
+    .release        = my_release,
+    .unlocked_ioctl = my_ioctl
 };
 
 static int __init chr_driver_init(void) {
@@ -121,13 +131,38 @@ static ssize_t my_write(struct file* file, const char __user* user_buffer, size_
         return 0;
     }
 
-    if(copy_from_user(my_data->buffer, user_buffer, size)) {
+    if(copy_from_user(my_data->buffer, user_buffer, size) != 0) {
         printk(KERN_INFO"my_device: Failed to copy data from the user\n");
         return -EFAULT;
     }
 
     printk(KERN_INFO"my_device: Data is written\n");
     return size;
+}
+
+static long my_ioctl(struct file* file, unsigned int cmd, unsigned long arg) {
+    // arg is actually the address to the buffer
+    switch(cmd) {
+        case MY_WR_DATA:
+            if(copy_from_user(&ioctl_val, (int32_t*)arg, sizeof(ioctl_val)) != 0) {
+                printk(KERN_INFO"my_device: Failed to write IOCTL data to the user\n");
+                return -1;
+            }
+            
+            printk(KERN_INFO" WRITE ioctl_val = %d\n", ioctl_val);
+            break;
+
+        case MY_RD_DATA:
+            if(copy_to_user((int32_t*)arg, &ioctl_val, sizeof(ioctl_val)) != 0) {
+                printk(KERN_INFO"my_device: Failed to read IOCTL data from the user\n");
+                return -1;
+            }
+            
+            printk(KERN_INFO" READ ioctl_val = %d\n", ioctl_val);
+            break;
+    }
+
+    return 0;
 }
 
 
