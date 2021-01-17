@@ -2,6 +2,8 @@ I'm trying to learn character devices, it's not the ideal code.
 
 ---
 
+Install `linux-api-headers` first, then:
+
 Run the character device:
 ```
 sudo rmmod cdev.ko; make && sudo insmod cdev.ko
