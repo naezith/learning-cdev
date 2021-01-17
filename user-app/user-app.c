@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
                 return -1;
             }
 
-            printf("Successfully wrote the data to the character device\n");
+            printf("Successfully wrote to the character device\n");
             break;
     }
 
