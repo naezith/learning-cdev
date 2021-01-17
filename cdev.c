@@ -116,7 +116,7 @@ static ssize_t my_read(struct file* file, char __user* user_buffer, size_t size,
 
     if(copy_to_user(user_buffer, my_data->buffer + *offset, size) != 0) {
         printk(KERN_INFO"my_device: Failed to copy data to user\n");
-        return -EFAULT;
+        return -1;
     }
 
     printk(KERN_INFO"my_device: Data is read\n");
@@ -133,7 +133,7 @@ static ssize_t my_write(struct file* file, const char __user* user_buffer, size_
 
     if(copy_from_user(my_data->buffer, user_buffer, size) != 0) {
         printk(KERN_INFO"my_device: Failed to copy data from the user\n");
-        return -EFAULT;
+        return -1;
     }
 
     printk(KERN_INFO"my_device: Data is written\n");
