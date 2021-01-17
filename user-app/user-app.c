@@ -38,7 +38,7 @@ r_invalid_operation:
     }
 
     if(action == IOCTL_WRITE && action_data == NULL) {
-        printf("Add the text to write like \"ioctl-write 1337\"\n");
+        printf("Add the number to ioctl-write like \"ioctl-write 1337\"\n");
         goto r_error;
     }
 
