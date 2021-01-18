@@ -7,6 +7,7 @@
 #include <linux/uaccess.h>
 #include <linux/ioctl.h>
 #include <linux/proc_fs.h>
+#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <asm/io.h>
 
@@ -64,14 +65,17 @@ static struct proc_ops fops_proc = {
 
 // Interrupt Handler IRQ
 #define IRQ_NO 1 // Keyboard
+irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs);
 
-irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
-    static size_t i = 0;
-    printk(KERN_INFO"my_device: Keyboard Interrupt #%ld\n", i++);
-    return IRQ_HANDLED;
-}
+// Tasklet
+void tasklet_func(struct tasklet_struct* data);
+// Static tasklet init
+// DECLARE_TASKLET(tasklet, tasklet_func);
 
+// Dynamic tasklet, init part is in the cdev init func
+struct tasklet_struct* tasklet;
 
+// cdev
 static int __init chr_driver_init(void) {
     // Get character device identification, major, minor
     if(alloc_chrdev_region(&my_device.dev, 0, 1, "my_device_driver") != 0) {
@@ -111,6 +115,14 @@ static int __init chr_driver_init(void) {
     }
 
     printk(KERN_INFO"my_device: Registered the interrupt handler No:%d\n", IRQ_NO);
+ 
+    // Dynamic tasklet init
+    tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL);
+    tasklet_init(tasklet, (void*)tasklet_func, 0);
+    if(tasklet == NULL) {
+        printk(KERN_INFO"my_device: Failed to alloc memory for the tasklet\n");
+        goto r_irq;
+    }
 
     // Create proc entry
     if(proc_create(PROC_ENTRY_NAME, 0666, NULL, &fops_proc) == NULL) {
@@ -140,6 +152,7 @@ static void __exit chr_driver_exit(void) {
     class_destroy(dev_class);
     cdev_del(&my_device.cdev);
     unregister_chrdev_region(my_device.dev, 1);
+    tasklet_kill(tasklet);
     free_irq(IRQ_NO, (void*)(irq_handler));
     remove_proc_entry(PROC_ENTRY_NAME, NULL);
     printk(KERN_INFO"my_device: Device driver is removed\n");
@@ -271,6 +284,22 @@ static ssize_t my_write_proc(struct file* file, const char* user_buffer, size_t 
 
     printk(KERN_INFO"my_device: Data is written\n");
     return size;
+}
+
+irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
+    static size_t i = 0;
+    printk(KERN_INFO"my_device: Keyboard Interrupt #%ld\n", i++);
+
+    // Static tasklet
+    // tasklet_schedule(&tasklet);
+    // Dynamic tasklet
+    tasklet_schedule(tasklet);
+
+    return IRQ_HANDLED;
+}
+
+void tasklet_func(struct tasklet_struct* data) {
+    printk(KERN_INFO"my_device: Executing the tasklet function\n");
 }
 
 module_init(chr_driver_init);
