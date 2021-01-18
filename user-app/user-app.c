@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
             goto r_error;
         }
         
-        strcpy(dev_path, "/proc/my_chr_proc");
+        strcpy(dev_path, "/proc/my_device_proc");
         strcpy(target_type, "proc");
     }
     else {

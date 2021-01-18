@@ -7,6 +7,8 @@
 #include <linux/uaccess.h>
 #include <linux/ioctl.h>
 #include <linux/proc_fs.h>
+#include <linux/interrupt.h>
+#include <asm/io.h>
 
 #define BUFFER_SIZE 1024
 
@@ -45,7 +47,7 @@ static struct file_operations fops = {
 };
 
 // proc data
-#define PROC_ENTRY_NAME "my_chr_proc"
+#define PROC_ENTRY_NAME "my_device_proc"
 
 // proc
 static int my_open_proc(struct inode* inode, struct file* file);
@@ -59,6 +61,16 @@ static struct proc_ops fops_proc = {
     .proc_open           = my_open_proc,
     .proc_release        = my_release_proc
 };
+
+// Interrupt Handler IRQ
+#define IRQ_NO 1 // Keyboard
+
+irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
+    static size_t i = 0;
+    printk(KERN_INFO"my_device: Keyboard Interrupt #%ld\n", i++);
+    return IRQ_HANDLED;
+}
+
 
 static int __init chr_driver_init(void) {
     // Get character device identification, major, minor
@@ -92,13 +104,27 @@ static int __init chr_driver_init(void) {
 
     printk(KERN_INFO"my_device: Device driver is inserted\n");
 
+    // Register the interrupt handler
+    if (request_irq(IRQ_NO, (irq_handler_t)irq_handler, IRQF_SHARED, "my_device_kb_irq", (void*)(irq_handler))) {
+        printk(KERN_INFO"my_device: Failed to register the interrupt handler\n");
+        goto r_irq;
+    }
+
+    printk(KERN_INFO"my_device: Registered the interrupt handler No:%d\n", IRQ_NO);
+
     // Create proc entry
     if(proc_create(PROC_ENTRY_NAME, 0666, NULL, &fops_proc) == NULL) {
         printk(KERN_INFO"my_device: Failed to create the proc entry\n");
-        goto r_device;
+        goto r_proc;
     }
 
     return 0;
+
+r_proc:
+    remove_proc_entry(PROC_ENTRY_NAME, NULL);
+
+r_irq:
+    free_irq(IRQ_NO, (void*)(irq_handler));
 
 r_device: 
     device_destroy(dev_class, my_device.dev);
@@ -114,6 +140,7 @@ static void __exit chr_driver_exit(void) {
     class_destroy(dev_class);
     cdev_del(&my_device.cdev);
     unregister_chrdev_region(my_device.dev, 1);
+    free_irq(IRQ_NO, (void*)(irq_handler));
     remove_proc_entry(PROC_ENTRY_NAME, NULL);
     printk(KERN_INFO"my_device: Device driver is removed\n");
 }
@@ -245,7 +272,6 @@ static ssize_t my_write_proc(struct file* file, const char* user_buffer, size_t 
     printk(KERN_INFO"my_device: Data is written\n");
     return size;
 }
-
 
 module_init(chr_driver_init);
 module_exit(chr_driver_exit);
