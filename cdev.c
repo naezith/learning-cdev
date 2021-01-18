@@ -78,12 +78,14 @@ void tasklet_func(struct tasklet_struct* data);
 struct tasklet_struct* tasklet;
 
 // Thread
+static struct task_struct* my_thread1;
+static struct task_struct* my_thread2;
 int thread_func1(void* p);
+int thread_func2(void* p);
 
 // Spinlock
 DEFINE_SPINLOCK(my_spinlock);
-static struct task_struct* my_thread1;
-static struct task_struct* my_thread2;
+unsigned long spinlock_counter = 0;
 
 // cdev
 static int __init chr_driver_init(void) {
@@ -178,7 +180,8 @@ r_class:
 }
 
 static void __exit chr_driver_exit(void) {
-    kthread_stop(my_thread);
+    kthread_stop(my_thread1);
+    kthread_stop(my_thread2);
     device_destroy(dev_class, my_device.dev);
     class_destroy(dev_class);
     cdev_del(&my_device.cdev);
@@ -319,8 +322,12 @@ static ssize_t my_write_proc(struct file* file, const char* user_buffer, size_t 
 
 irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
     static size_t i = 0;
-    printk(KERN_INFO"my_device: Keyboard Interrupt #%ld\n", i++);
+    spin_lock_irq(&my_spinlock);
+    
+    printk(KERN_INFO"my_device: Keyboard Interrupt #%ld, spinlock counter: %lu\n", i++, ++spinlock_counter);
 
+    spinlock_unlock_irq(&my_spinlock);
+    
     // Static tasklet
     // tasklet_schedule(&tasklet);
     // Dynamic tasklet
@@ -330,17 +337,30 @@ irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
 }
 
 void tasklet_func(struct tasklet_struct* data) {
-    printk(KERN_INFO"my_device: Executing the tasklet function\n");
+    printk(KERN_INFO"my_device: Executing the tasklet function, spinlock counter: %lu\n", ++spinlock_counter);
+
+    spinlock_unlock_irq(&my_spinlock);
 }
 
 int thread_func1(void* p) {
     int i = 0;
 
     while(!kthread_should_stop()) {
-        printk(KERN_INFO"my_device: Looping inside the kernel thread: %d", i++);
+        if(!spin_is_locked(&my_spinlock)) {
+            printk(KERN_INFO"my_device: func1: Not locked, looping inside the kernel thread: %d\n", i++);
+        }
+
+        spin_lock(&my_spinlock);
+        if(spin_is_locked(&my_spinlock)) 
+            printk(KERN_INFO"my_device: func1: Locked: %d\n", i);
+
+        printk(KERN_INFO"my_device: func1: Spinlock counter: %lu\n", ++spinlock_counter);
+
+        spin_unlock(&my_spinlock);
+
         msleep(1000);
     }
-
+    
     return 0;
 }
 
@@ -348,7 +368,18 @@ int thread_func2(void* p) {
     int i = 0;
 
     while(!kthread_should_stop()) {
-        printk(KERN_INFO"my_device: Looping inside the kernel thread: %d", i++);
+        if(!spin_is_locked(&my_spinlock)) {
+            printk(KERN_INFO"my_device: func2: Not locked, looping inside the kernel thread: %d\n", i++);
+        }
+
+        spin_lock(&my_spinlock);
+        if(spin_is_locked(&my_spinlock)) 
+            printk(KERN_INFO"my_device: func2: Locked: %d\n", i);
+
+        printk(KERN_INFO"my_device: func2: Spinlock counter: %lu\n", ++spinlock_counter);
+
+        spin_unlock(&my_spinlock);
+
         msleep(1000);
     }
 
