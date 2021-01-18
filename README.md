@@ -19,3 +19,5 @@ sudo ./user-app.out read
 sudo ./user-app.out ioctl-write 1337
 sudo ./user-app.out ioctl-read
 ```
+
+Keyboard Interrupt works only for build-in laptop keyboard, not USB keyboards somehow.
