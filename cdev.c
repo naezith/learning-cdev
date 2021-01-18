@@ -9,6 +9,8 @@
 #include <linux/proc_fs.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
 #include <asm/io.h>
 
 #define BUFFER_SIZE 1024
@@ -75,6 +77,14 @@ void tasklet_func(struct tasklet_struct* data);
 // Dynamic tasklet, init part is in the cdev init func
 struct tasklet_struct* tasklet;
 
+// Thread
+int thread_func1(void* p);
+
+// Spinlock
+DEFINE_SPINLOCK(my_spinlock);
+static struct task_struct* my_thread1;
+static struct task_struct* my_thread2;
+
 // cdev
 static int __init chr_driver_init(void) {
     // Get character device identification, major, minor
@@ -115,7 +125,27 @@ static int __init chr_driver_init(void) {
     }
 
     printk(KERN_INFO"my_device: Registered the interrupt handler No:%d\n", IRQ_NO);
- 
+
+    // Thread, run separately
+    // if((my_thread1 = kthread_create(thread_func1, NULL, "my thread"))) {
+    //     wake_up_process(my_thread1);
+    // }
+    // else {
+    //     printk(KERN_INFO"my_device: Failed to create the thread\n");
+    //     goto r_irq;
+    // }
+
+    // Thread, run directly
+    if((my_thread1 = kthread_run(thread_func1, NULL, "my thread 1")) == 0) {
+        printk(KERN_INFO"my_device: Failed to create the thread\n");
+        goto r_irq;
+    }
+    if((my_thread2 = kthread_run(thread_func2, NULL, "my thread 2")) == 0) {
+        printk(KERN_INFO"my_device: Failed to create the thread\n");
+        goto r_irq;
+    }
+
+
     // Dynamic tasklet init
     tasklet = kmalloc(sizeof(struct tasklet_struct), GFP_KERNEL);
     tasklet_init(tasklet, (void*)tasklet_func, 0);
@@ -148,6 +178,7 @@ r_class:
 }
 
 static void __exit chr_driver_exit(void) {
+    kthread_stop(my_thread);
     device_destroy(dev_class, my_device.dev);
     class_destroy(dev_class);
     cdev_del(&my_device.cdev);
@@ -300,6 +331,28 @@ irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
 
 void tasklet_func(struct tasklet_struct* data) {
     printk(KERN_INFO"my_device: Executing the tasklet function\n");
+}
+
+int thread_func1(void* p) {
+    int i = 0;
+
+    while(!kthread_should_stop()) {
+        printk(KERN_INFO"my_device: Looping inside the kernel thread: %d", i++);
+        msleep(1000);
+    }
+
+    return 0;
+}
+
+int thread_func2(void* p) {
+    int i = 0;
+
+    while(!kthread_should_stop()) {
+        printk(KERN_INFO"my_device: Looping inside the kernel thread: %d", i++);
+        msleep(1000);
+    }
+
+    return 0;
 }
 
 module_init(chr_driver_init);
