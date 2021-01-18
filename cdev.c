@@ -326,7 +326,7 @@ irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
     
     printk(KERN_INFO"my_device: Keyboard Interrupt #%ld, spinlock counter: %lu\n", i++, ++spinlock_counter);
 
-    spinlock_unlock_irq(&my_spinlock);
+    spin_unlock_irq(&my_spinlock);
     
     // Static tasklet
     // tasklet_schedule(&tasklet);
@@ -337,9 +337,11 @@ irqreturn_t irq_handler(int irq, void* dev_id, struct pt_regs* regs) {
 }
 
 void tasklet_func(struct tasklet_struct* data) {
+    spin_lock_irq(&my_spinlock);
+
     printk(KERN_INFO"my_device: Executing the tasklet function, spinlock counter: %lu\n", ++spinlock_counter);
 
-    spinlock_unlock_irq(&my_spinlock);
+    spin_unlock_irq(&my_spinlock);
 }
 
 int thread_func1(void* p) {
